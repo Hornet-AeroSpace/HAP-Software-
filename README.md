@@ -10,3 +10,4 @@ To run Main.ino/Cpp.
 
 - For .ino, run { cp main.ino path/to/Folder } 
 - For .cpp, run { cp main.cpp path/to/Folder ; cp Sensor_Libraries path/to/Folder }
+

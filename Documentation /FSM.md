@@ -4,16 +4,19 @@ Flight Computer Stage Diagram
 
 Context:
 
-What will this chart achieve? 
-	The intention of this chart is to expose the hardware & software req’s of our system.  
+**What will this chart achieve?**
+	The intention of this chart is to expose the hardware & software req’s of our 
+    system.  
 
-Format: 
 
-    Stage N, Title 
-Functions: 
+FORMAT:  
+
+1. Stage N, Title 
+
+2. Functions: 
 *What is happening during this stage* 
 
-Transition Behavior: 
+3. Transition Behavior: 
 		*Noteworthy Event → Destination Stage*
 
 --------------
@@ -64,24 +67,10 @@ Functions:
 1. Preform On-Flight computation (sensorfusion based velocity)
 2. Transmit telemetry data through UART
 3. Write telemetry data to sdCard.  
+4. Deploy parachute off of pre-defined params. (optional)
 
 Transition Behavior:
 - Went Idle → Stage 1
-- 1.7G’s → Stage 3
-
-
-
-Stage 4 “Launch (Second Stage)”
-
-Functions:
-1. Preform On-Flight computation (sensorfusion velocity)
-2. Transmit telemetry data through UART
-3. Write telemetry data to sdCard.  
-
-Transition Behavior:
-- Went Idle → Stage 1
-- 1.7G’s → Stage 3
-
 
 
 
@@ -90,9 +79,7 @@ Success Metrics:
 1. Accuracy of timing during launch 
 2. Samping rate, Ideal versus measured
 3. Accuracy of apogee timing 
+** Please add more**
 
 
 
-
-What assumptions are implicit 
-Understanding the output rate of our chosen sensor 
