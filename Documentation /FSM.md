@@ -16,22 +16,27 @@ FORMAT:
 2. Functions: 
 *What is happening during this stage* 
 
-3. Transition Behavior: 
-		*Noteworthy Event → Destination Stage*
+3. Transition Behavior: 	
+*Noteworthy Event → Destination Stage*
+
+    ASCENT/BOOST: 
+    APOGEE: The highest point of the flight has been reached.
+    DESCENT_DROGUE: Apogee deployment charge has fired. The rocket is descending under a small drogue parachute.
+    : Main parachute deployment altitude reached and charge has fired (for L2/L3).
+    : The rocket is on the ground. The system can now enter a recovery mode (e.g., beeping). 
 
 --------------
-Stage 1 “Idle”
+Stage 1 “Pad Idle”: The initial state after power-on. Awaiting user input
 
 Functions: 
 1. Read accelerometer data 
 2. Determine if any movement has happened 
 
 Transition Behavior
-- Light Jostle → Stage 2
-- If still, Remain 
+If physical switch toggled -> Stage 2.  Switch will be in between Ematch cables 
 --------------
 
-Stage 2 “Might be Launching”
+Stage 2 “Might_Be_Launching” 
 
 Functions 
 1. Preform On-Flight computation (sensorfusion based velocity)
@@ -41,11 +46,10 @@ Functions
 Maybe - use microphone instead… Decibel level could indicate launch
 
 Transition Behavior
-- Went Idle → Stage 1
 - 1.7G’s > → Stage 3
 --------------
  
-Stage 3 “Actively Launching”
+Stage 3 “ASCENT/BOOST”:  Launch has been detected. The motor is burning.
 
 Functions:
 1. Preform On-Flight computation (sensorfusion based velocity)
@@ -57,11 +61,9 @@ Functions:
 Transition Behavior:
 - Parachute Deployed → Stage 4
 - Anything Else, Remain. 
-
-
 —---------------
 
-Stage 4 “Launch (Second Stage)”
+Stage 4 “DESCENT_MAIN” : Motor has burned out, and decending. About to deploy Main parachute 
 
 Functions:
 1. Preform On-Flight computation (sensorfusion based velocity)
@@ -70,9 +72,10 @@ Functions:
 4. Deploy parachute off of pre-defined params. (optional)
 
 Transition Behavior:
-- Went Idle → Stage 1
+- Went Idle → Stage 5.
 
 
+Stage 5: LANDED/RECOVERY. 
 
 Success Metrics: 
 
