@@ -74,14 +74,16 @@ Functions:
 Transition Behavior:
 - Went Idle → Stage 5.
 
-
+------------------------
 Stage 5: LANDED/RECOVERY. 
 
+------------------------
 Success Metrics: 
 
-1. Accuracy of timing during launch 
+1. Accuracy of timing inital launch 
 2. Samping rate, Ideal versus measured
 3. Accuracy of apogee timing 
+
 ** Please add more**
 
 

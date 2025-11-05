@@ -1,10 +1,63 @@
+
+#include "Arduino.h"
+#include <string>
+#include <Wire.h>
+#include "Adafruit_ICM20948.h"
+#include "Adafruit_ICM20X.h"
+#include <Adafruit_Sensor.h>
+#include "Adafruit_BMP3XX.h"
+#include "Adafruit_ADXL375.h"
+#include "Adafruit_INA260.h"
+#include <SPI.h>
+#include <SD.h>
+
 int stageNumber = 1;
 
-void setup() {
+// Classes & Structs 
+struct Vector3D {
+  float x, y, z;
+};
 
+struct FlightData {
+  unsigned long timeStamp;
+  Vector3D accel_HR;  Vector3D accel_LR;  Vector3D gyro;
+  float pressure;
+  float altitude;
+  float temperature;   
+};
+
+
+void setup() {
+Serial.Begin(9600);
+
+Serial.print("Initializing SD card...");
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Initialization failed!");
+       while (1);
+    }
+
+
+ FlightData FData; 
 }
 
 void loop() {
+// set flight data with new values every loop 
+
+  switch (STAGENUMBER) {
+    case 1:
+    stageOne();   // Checking For accelration, ( needs 3 components bc the sensor can have multiple orientations)
+      break;
+    case 2:
+    stageTwo();           // Wating 5.5s
+      break;
+    case 3:
+    stageThree();        // Checking for Apogee 
+      break;
+    case 4: 
+    stageFour();         // Checking for 1400ft
+    default:
+      break;
+  }
 
 }
 
