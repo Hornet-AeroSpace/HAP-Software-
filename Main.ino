@@ -137,7 +137,12 @@ void loop() {
 
 
 bool checkContinuity() {
-    return digitalRead(CONTINUITY_IN) == HIGH;
+    static int lastContinuityState = -1;
+    bool continuity = digitalRead(CONTINUITY_IN) == HIGH;
+    if (lastContinuityState != continuity)
+        Serial.println(String("Continuity: ") + String(continuity ? "TRUE" : "FALSE"));
+    lastContinuityState = continuity;
+    return continuity;
 }
 
 void stageOne() { // Pre-launch idle
