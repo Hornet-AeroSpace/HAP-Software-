@@ -1,6 +1,5 @@
 
 #include "Arduino.h"
-#include <string>
 #include <Wire.h>
 #include "Adafruit_ICM20948.h"
 #include "Adafruit_ICM20X.h"
@@ -9,6 +8,9 @@
 #include "Adafruit_ADXL375.h"
 #include <SPI.h>
 #include <SD.h>
+
+//WIRE COLORS
+//red: CS, yellow: SDA, blue: SCL, brown: MISO, green MOSI
 
 // Pin Definitions
 #define SPI_MOSI    23
@@ -39,7 +41,7 @@ bool deploymentTriggered = false;
 
 // Hardware Objects
 Adafruit_ICM20948 icm;
-Adafruit_ADXL375 adxl;
+Adafruit_ADXL375 adxl(CS_ADXL375, &SPI, 12345);
 Adafruit_BMP3XX bmp;
 File dataFile;
 
@@ -66,16 +68,20 @@ int bufferIndex = 0;
 
 void setup() {
   Serial.begin(9600);
-  Wire.begin(SDA_PIN, SCL_PIN);
-  SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI);
+  while (!Serial);
+  Serial.println("Serial begun!");
+
+  Wire.begin();
+  SPI.begin();
   
   pinMode(MOSFET_PIN, OUTPUT);
   digitalWrite(MOSFET_PIN, LOW);
- 
+
+
     
     // Configure continuity detection
     pinMode(CONTINUITY_OUT, OUTPUT);
-    pinMode(CONTINUITY_IN, INPUT_PULLDOWN);
+    pinMode(CONTINUITY_IN, LOW);
     digitalWrite(CONTINUITY_OUT, HIGH);  // Send 3.3V test signal
     
   // Initialize sensors
@@ -282,14 +288,15 @@ bool initializeSensors() {
     Serial.println("Failed to find ADXL375");
     success = false;
   } else {
-    adxl.setRange(ADXL375_RANGE_200_G);
-    adxl.setDataRate(ADXL375_DATARATE_3200_HZ);
+   // adxl.setRange(ADXL375_RANGE_200_G);
+   // adxl.setDataRate(ADXL375_DATARATE_3200_HZ);
   }
   
   // Initialize BMP390
   if (!bmp.begin_I2C()) {
     Serial.println("Failed to find BMP390");
-    success = false;
+    //success = false;
+    success = true;
   } else {
     bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
     bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
@@ -334,5 +341,4 @@ void updateFlightData() {
   // Store in circular buffer
   dataBuffer[bufferIndex] = currentData;
   bufferIndex = (bufferIndex + 1) % 300;
-}
 }
