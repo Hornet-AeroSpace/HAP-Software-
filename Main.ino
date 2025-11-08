@@ -9,14 +9,12 @@
 #include <SPI.h>
 #include <SD.h>
 
-//WIRE COLORS
-//red: CS, yellow: SDA, blue: SCL, brown: MISO, green MOSI
-
 // Pin Definitions
 #define SPI_MOSI    23
-#define SPI_MISO    19    
+#define SPI_MISO    19
 #define SPI_CLK     18
 #define CS_ICM20948  4
+#define CS_BMP390    3
 #define CS_ADXL375  16
 #define CS_SD       17
 #define SDA_PIN     21
@@ -68,22 +66,21 @@ int bufferIndex = 0;
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial);
-  Serial.println("Serial begun!");
-
+  while(!Serial); //wait for serial to connect
+  Serial.println("Serial started");
   Wire.begin();
   SPI.begin();
-  
+
+
   pinMode(MOSFET_PIN, OUTPUT);
   digitalWrite(MOSFET_PIN, LOW);
 
-
-    
     // Configure continuity detection
-    pinMode(CONTINUITY_OUT, OUTPUT);
-    pinMode(CONTINUITY_IN, LOW);
-    digitalWrite(CONTINUITY_OUT, HIGH);  // Send 3.3V test signal
+  pinMode(CONTINUITY_OUT, OUTPUT);
+  pinMode(CONTINUITY_IN, INPUT);
+  digitalWrite(CONTINUITY_OUT, HIGH);  // Send 3.3V test signal
     
+  //BUG: ICM20948 WILL FAIL WHEN SD CARD MODULE IS PLUGGED IN
   // Initialize sensors
   if (!initializeSensors()) {
     Serial.println("CRITICAL: Sensor initialization failed!");
@@ -131,7 +128,9 @@ void loop() {
     }
     
     // Log data at specified rate
+
     if (currentTime - lastLogWrite >= (1000/LOG_RATE)) {
+
       logFlightData();
       transmitTelemetry();
       lastLogWrite = currentTime;
@@ -275,6 +274,10 @@ void stageFour() { // Post-deployment descent
 //-------------- Sensor & Data Functions --------------
 
 bool initializeSensors() {
+  pinMode(CS_ICM20948, OUTPUT); digitalWrite(CS_ICM20948, HIGH); //Sensors should idle HIGH before being initialized
+  pinMode(CS_ADXL375,  OUTPUT); digitalWrite(CS_ADXL375,  HIGH);
+  pinMode(CS_SD,       OUTPUT); digitalWrite(CS_SD,       HIGH);
+  pinMode(CS_BMP390,   OUTPUT); digitalWrite(CS_BMP390,   HIGH);
   bool success = true;
   
   // Initialize ICM20948
@@ -284,7 +287,7 @@ bool initializeSensors() {
   }
   
   // Initialize ADXL375  
-  if (!adxl.begin(CS_ADXL375)) {
+  if (!adxl.begin()) {
     Serial.println("Failed to find ADXL375");
     success = false;
   } else {
@@ -293,10 +296,9 @@ bool initializeSensors() {
   }
   
   // Initialize BMP390
-  if (!bmp.begin_I2C()) {
+  if (!bmp.begin_SPI(CS_BMP390)) {
     Serial.println("Failed to find BMP390");
-    //success = false;
-    success = true;
+    success = false;
   } else {
     bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
     bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
@@ -316,9 +318,9 @@ void updateFlightData() {
   sensors_event_t accel_lr, gyro_data, temp;
   icm.getEvent(&accel_lr, &gyro_data, &temp);
   
-  currentData.accel_LR.x = accel_lr.acceleration.x / 9.81; // Convert m/s² to g
-  currentData.accel_LR.y = accel_lr.acceleration.y / 9.81;
-  currentData.accel_LR.z = accel_lr.acceleration.z / 9.81;
+  currentData.accel_LR.x = accel_lr.acceleration.x; //In terms of meters instead of G's, since evrything else is in meters
+  currentData.accel_LR.y = accel_lr.acceleration.y;
+  currentData.accel_LR.z = accel_lr.acceleration.z;
   
   currentData.gyro.x = gyro_data.gyro.x;
   currentData.gyro.y = gyro_data.gyro.y; 
@@ -327,9 +329,9 @@ void updateFlightData() {
   // Read high-G accelerometer
   sensors_event_t adxl_event;
   adxl.getEvent(&adxl_event);
-  currentData.accel_HR.x = adxl_event.acceleration.x / 9.81;
-  currentData.accel_HR.y = adxl_event.acceleration.y / 9.81;
-  currentData.accel_HR.z = adxl_event.acceleration.z / 9.81;
+  currentData.accel_HR.x = adxl_event.acceleration.x;
+  currentData.accel_HR.y = adxl_event.acceleration.y;
+  currentData.accel_HR.z = adxl_event.acceleration.z;
   
   // Read barometric data
   if (bmp.performReading()) {
