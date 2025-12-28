@@ -13,7 +13,7 @@ FORMAT:
 
 1. Stage N, Title 
 
-2. Functions: 
+2. Functions: f
 *What is happening during this stage* 
 
 3. Transition Behavior: 	
