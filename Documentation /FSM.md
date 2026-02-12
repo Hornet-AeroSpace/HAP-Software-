@@ -40,13 +40,14 @@ Stage 2 “Might_Be_Launching”
 
 Functions 
 1. Preform On-Flight computation (sensorfusion based velocity)
-2. Maintain a running total of the previous 30sec of all sensor data 
+2. Begin writing to sd file from BoF (beginning of file) 
 3. Measure acceleration & barometric pressure 
 
 Maybe - use microphone instead… Decibel level could indicate launch
 
 Transition Behavior
 - 1.7G’s >  → Stage 3
+- 30 seconds pass -> stage 2
 --------------
  
 Stage 3 “ASCENT/BOOST”:  Launch has been detected. The motor is burning.
