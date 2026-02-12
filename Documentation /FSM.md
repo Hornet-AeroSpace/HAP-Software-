@@ -33,7 +33,7 @@ Functions:
 2. Determine if any movement has happened 
 
 Transition Behavior
-If physical switch toggled -> Stage 2.  Switch will be in between Ematch cables 
+- If physical switch toggled -> Stage 2.  Switch will be in between Ematch cables
 --------------
 
 Stage 2 “Might_Be_Launching” 
@@ -46,14 +46,25 @@ Functions
 Maybe - use microphone instead… Decibel level could indicate launch
 
 Transition Behavior
-- 1.7G’s > → Stage 3
+- 1.7G’s >  → Stage 3
 --------------
  
 Stage 3 “ASCENT/BOOST”:  Launch has been detected. The motor is burning.
 
 Functions:
+1. Preform On-Flight computations 
+2. Cut off parachute ejection logic. 
+3. Transmit telemetry data through UART.
+4. Write telemetry data to sdCard.  
+
+Transition Behavior:
+- 4.5 seconds pass -> Stage 4 
+—---------------
+ 
+Stage 4 “Coast”: Motor has burned out, apogee is imminent
+
+Functions:
 1. Preform On-Flight computation (sensorfusion based velocity)
-2. Switch off decision logic if spd
 3. Transmit telemetry data through UART
 4. Write telemetry data to sdCard.  
 5. Deploy parachute off of pre-defined params. 
@@ -63,7 +74,7 @@ Transition Behavior:
 - Anything Else, Remain. 
 —---------------
 
-Stage 4 “DESCENT_MAIN” : Motor has burned out, and decending. About to deploy Main parachute 
+Stage 5 “DESCENT_MAIN” : Motor has burned out, and decending. About to deploy Main parachute 
 
 Functions:
 1. Preform On-Flight computation (sensorfusion based velocity)
