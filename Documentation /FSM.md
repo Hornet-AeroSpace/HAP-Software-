@@ -70,7 +70,7 @@ Functions:
 5. Deploy parachute off of pre-defined params. 
 
 Transition Behavior:
-- Parachute Deployed → Stage 4
+- Parachute Deployed → Stage 5
 - Anything Else, Remain. 
 —---------------
 
@@ -83,10 +83,10 @@ Functions:
 4. Deploy parachute off of pre-defined params. (optional)
 
 Transition Behavior:
-- Went Idle → Stage 5.
+- Went Idle → Stage 6.
 
 ------------------------
-Stage 5: LANDED/RECOVERY. 
+Stage 6: LANDED/RECOVERY. 
 
 ------------------------
 Success Metrics: 
