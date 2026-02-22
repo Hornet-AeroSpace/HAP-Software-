@@ -1,4 +1,3 @@
-
 #include "Arduino.h"
 #include <Wire.h>
 #include "Adafruit_ICM20948.h"
@@ -8,6 +7,19 @@
 #include "Adafruit_ADXL375.h"
 #include <SPI.h>
 #include <SD.h>
+
+
+
+// MUST READ!! CONSTANTS TO DEFINE BEFORE LAUNCH
+
+#define MOTOR_BURN_TIME           // (optional) written on motor casing
+#define MAX_FLIGHT_TIME   70000   // 70 sec backup deployment (ms). Must confirm with simulation
+#define MAIN_CHUTE_ALTITUDE 400   //  SET TO ZERO IF THERE IS NO MAIN
+#define IS_SONIC false            // Is rocket approaching mach 1
+#define MOSFET_PIN  8             // ought to double check esp pin wiring. 
+#define MOSFET_PIN2 6
+//-------------------------------------------------
+
 
 // Pin Definitions
 #define SPI_MOSI    23
@@ -19,23 +31,19 @@
 #define CS_SD       17
 #define SDA_PIN     21
 #define SCL_PIN     22
-#define MOSFET_PIN  32
-
 #define CONTINUITY_OUT  25    // Output pin (sends signal)
 #define CONTINUITY_IN   26    // Input pin (receives signal)
 
 // Flight Parameters
-#define LAUNCH_G_THRESHOLD 3.5      // G-force to detect launch
-#define MAX_FLIGHT_TIME    70000    // 70 sec backup deployment (ms)
-#define LAUNCH_SUSTAIN_TIME 2000    // 2 sec sustained G for launch detect
-#define SENSOR_RATE 100             // 100Hz sensor sampling
-#define LOG_RATE 10                 // 10Hz data logging
+#define LAUNCH_G_THRESHOLD 2.5     // G-force to detect launch
+#define LAUNCH_SUSTAIN_TIME 50    // 50ms sustained G for launch detect
+#define SENSOR_RATE 100             // 1000Hz sensor sampling
+#define LOG_RATE 10                 // 20Hz data logging
 
 int stageNumber = 1;
 unsigned long flightStartTime = 0;
 unsigned long lastSensorRead = 0;
 unsigned long lastLogWrite = 0;
-bool deploymentTriggered = false;
 
 // Hardware Objects
 Adafruit_ICM20948 icm;
@@ -80,7 +88,7 @@ void setup() {
   pinMode(CONTINUITY_IN, INPUT);
   digitalWrite(CONTINUITY_OUT, HIGH);  // Send 3.3V test signal
     
-  //BUG: ICM20948 WILL FAIL WHEN SD CARD MODULE IS PLUGGED IN
+  //$$BUG: ICM20948 WILL FAIL WHEN SD CARD MODULE IS PLUGGED IN
   // Initialize sensors
   if (!initializeSensors()) {
     Serial.println("CRITICAL: Sensor initialization failed!");
@@ -104,19 +112,23 @@ void loop() {
     updateFlightData();
     lastSensorRead = currentTime;
     
-    // Stage state machine
+    // Emulated state machine
     switch (stageNumber) {
       case 1:
-        stageOne();
+        stageOne();  // Idle: Pull pin removal 
         break;
       case 2:
-        stageTwo();
+        stageTwo();  // Launch Pad: 2.5 G threshold 
         break;
       case 3:
-        stageThree();
+        stageThree(); // Boost: 4.5 second mach lockout (if speed> .7 mach )
         break;
       case 4: 
-        stageFour();
+        stageFour(); // Coast: Motor has burned, monitoring for apogee
+      case 5: 
+        stageFive(); // Main : If set through constants, second parachute will deploy at set altitude
+      case 6: 
+        stageSix(); // Compute flight stats.  TBD
         break;
       default:
         break;
@@ -124,7 +136,7 @@ void loop() {
     
     // Emergency backup deployment
     if (flightStartTime > 0 && currentTime - flightStartTime > MAX_FLIGHT_TIME) {
-      deployParachute("BACKUP_TIMEOUT");
+      deployParachute(0);
     }
     
     // Log data at specified rate
@@ -139,7 +151,123 @@ void loop() {
 }
 
 
+void stageOne() { // Pre-launch idle
+    if (!checkContinuity()) {
+        stageNumber = 2;
+        Serial.println("Stage 2: ARMED - Pull pin removed!");
+    }
+}
 
+void stageTwo() { // Potential launch detection
+  static unsigned long highGStartTime = 0;
+  
+  float yAccel = currentData.accel_LR.y; // Y-axis points up
+  
+  if (yAccel > LAUNCH_G_THRESHOLD) {
+    if (highGStartTime == 0) {
+      highGStartTime = millis();
+    } else if (millis() - highGStartTime > LAUNCH_SUSTAIN_TIME) {
+      stageNumber = 3;
+      flightStartTime = millis();
+      Serial.println("Stage 3: LAUNCH DETECTED!");
+      highGStartTime = 0;
+    }
+  } else {
+    highGStartTime = 0; // Reset if acceleration drops
+    
+    // Return to idle if no sustained acceleration
+    if (millis() - currentData.timeStamp > 5000) { // 5 second period to transition back to step 1
+      stageNumber = 1; 
+  }
+}
+}
+
+void stageThree() { // Active flight - Boost phase 
+  
+  if(IS_SONIC){ 
+  static unsigned long boostTimer = millis(); 
+
+  if(boostTimer - millis() > (MOTOR_BURN_TIME * 1000)){ 
+      stageNumber = 4; 
+    }
+
+  }else{ 
+    stageNumber = 4; 
+  }
+
+}
+
+void stageFour() { 
+  
+  static float maxAltitude = 0;
+  
+  if (currentData.altitude > maxAltitude) {
+    maxAltitude = currentData.altitude;
+  }
+  
+  if (apogeeReached(currentData.altitude)) {
+    deployParachute(MOSFET_PIN);
+    stageNumber = 4;
+    Serial.println("Stage 4: Parachute deployed at apogee");
+  }
+}
+
+void stageFive(){ 
+
+  if(MAIN_CHUTE_ALTITUDE){ 
+  if (currentData.Altitude <= MAIN_CHUTE_ALTITUDE){   // If statement returing true once altitude is below or equal to pre-set altitude
+    deployParachute(MOSFET_PIN2); 
+  }
+}
+
+
+}
+
+void stageSix(){ 
+// post-processing or Idle state. 
+
+}
+
+
+
+//-------------- Sensor & Data Functions --------------
+
+bool initializeSensors() {
+  pinMode(CS_ICM20948, OUTPUT); digitalWrite(CS_ICM20948, HIGH); //Sensors should idle HIGH before being initialized
+  pinMode(CS_ADXL375,  OUTPUT); digitalWrite(CS_ADXL375,  HIGH);
+  pinMode(CS_SD,       OUTPUT); digitalWrite(CS_SD,       HIGH);
+  pinMode(CS_BMP390,   OUTPUT); digitalWrite(CS_BMP390,   HIGH);
+  bool success = true;
+  
+  // Initialize ICM20948
+  if (!icm.begin_SPI(CS_ICM20948)) {
+    Serial.println("Failed to find ICM20948");
+    success = false;
+  }
+  
+
+  // Initialize ADXL375  
+  if (!adxl.begin()) {
+    Serial.println("Failed to find ADXL375");
+    success = false;
+  } else {
+   // adxl.setRange(ADXL375_RANGE_200_G);
+   // adxl.setDataRate(ADXL375_DATARATE_3200_HZ);
+  }
+  
+  // Initialize BMP390
+  if (!bmp.begin_SPI(CS_BMP390)) {
+    Serial.println("Failed to find BMP390");
+    success = false;
+  } else {
+    bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+    bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+    bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+    bmp.setOutputDataRate(BMP3_ODR_50_HZ);
+  }
+  
+  return success;
+}
 
 bool checkContinuity() {
     static int lastContinuityState = -1;
@@ -148,13 +276,6 @@ bool checkContinuity() {
         Serial.println(String("Continuity: ") + String(continuity ? "TRUE" : "FALSE"));
     lastContinuityState = continuity;
     return continuity;
-}
-
-void stageOne() { // Pre-launch idle
-    if (!checkContinuity()) {
-        stageNumber = 2;
-        Serial.println("Stage 2: ARMED - Pull pin removed!");
-    }
 }
 
 bool apogeeReached(float altitude) {
@@ -188,15 +309,15 @@ bool apogeeReached(float altitude) {
     return false;
 }
 
-void deployParachute(String reason) {
-  if (!deploymentTriggered) {
-    digitalWrite(MOSFET_PIN, HIGH);
-    deploymentTriggered = true;
-    Serial.println("PARACHUTE DEPLOYED: " + reason);
+void deployParachute(int pin) {
+
+    digitalWrite(pin, HIGH);
+    Serial.println(" PARACHUTE DEPLOYED: " + stageNumber);
     
-    // Keep deployment signal for 2 seconds
-    delay(2000);
-    digitalWrite(MOSFET_PIN, LOW);
+    delay(1000);            // Send a signal for 1 second to ensure ematch has been ignited. 
+    digitalWrite(pin, HIGH);  
+
+  
   }
 }
 
@@ -212,107 +333,16 @@ void logFlightData() {
       dataFile.print(currentData.altitude, 2); dataFile.print(",");
       dataFile.print(currentData.pressure, 2); dataFile.print(",");
       dataFile.print(currentData.temperature, 2); dataFile.print(",");
-      dataFile.println(deploymentTriggered);
+
       dataFile.close();
     }
   }
 }
 
-void transmitTelemetry() {
-  // Compact telemetry string for radio transmission
-  Serial.print("TLM:");
-  Serial.print(currentData.timeStamp); Serial.print(",");
-  Serial.print(currentData.stage); Serial.print(",");
-  Serial.print(currentData.altitude, 1); Serial.print(",");
-  Serial.print(currentData.accel_HR.y, 2); Serial.print(",");
-  Serial.println(deploymentTriggered);
-}
-
-void stageTwo() { // Potential launch detection
-  static unsigned long highGStartTime = 0;
-  
-  float yAccel = currentData.accel_LR.y; // Y-axis points up
-  
-  if (yAccel > LAUNCH_G_THRESHOLD) {
-    if (highGStartTime == 0) {
-      highGStartTime = millis();
-    } else if (millis() - highGStartTime > LAUNCH_SUSTAIN_TIME) {
-      stageNumber = 3;
-      flightStartTime = millis();
-      Serial.println("Stage 3: LAUNCH DETECTED!");
-      highGStartTime = 0;
-    }
-  } else {
-    highGStartTime = 0; // Reset if acceleration drops
-    
-    // Return to idle if no sustained acceleration
-    if (millis() - currentData.timeStamp > 10000) { // 10 sec timeout
-      stageNumber = 1;
-    }
-  }
-}
-
-void stageThree() { // Active flight - apogee detection
-  static float maxAltitude = 0;
-  
-  if (currentData.altitude > maxAltitude) {
-    maxAltitude = currentData.altitude;
-  }
-  
-  if (apogeeReached(currentData.altitude)) {
-    deployParachute("APOGEE_DETECTED");
-    stageNumber = 4;
-    Serial.println("Stage 4: Parachute deployed at apogee");
-  }
-}
-
-void stageFour() { // Post-deployment descent
-  // Continue logging and telemetry
-  // Could add secondary chute deployment logic here
-}
-
-//-------------- Sensor & Data Functions --------------
-
-bool initializeSensors() {
-  pinMode(CS_ICM20948, OUTPUT); digitalWrite(CS_ICM20948, HIGH); //Sensors should idle HIGH before being initialized
-  pinMode(CS_ADXL375,  OUTPUT); digitalWrite(CS_ADXL375,  HIGH);
-  pinMode(CS_SD,       OUTPUT); digitalWrite(CS_SD,       HIGH);
-  pinMode(CS_BMP390,   OUTPUT); digitalWrite(CS_BMP390,   HIGH);
-  bool success = true;
-  
-  // Initialize ICM20948
-  if (!icm.begin_SPI(CS_ICM20948)) {
-    Serial.println("Failed to find ICM20948");
-    success = false;
-  }
-  
-  // Initialize ADXL375  
-  if (!adxl.begin()) {
-    Serial.println("Failed to find ADXL375");
-    success = false;
-  } else {
-   // adxl.setRange(ADXL375_RANGE_200_G);
-   // adxl.setDataRate(ADXL375_DATARATE_3200_HZ);
-  }
-  
-  // Initialize BMP390
-  if (!bmp.begin_SPI(CS_BMP390)) {
-    Serial.println("Failed to find BMP390");
-    success = false;
-  } else {
-    bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
-    bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
-    bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
-    bmp.setOutputDataRate(BMP3_ODR_50_HZ);
-  }
-  
-  return success;
-}
 
 void updateFlightData() {
   currentData.timeStamp = millis();
   currentData.stage = stageNumber;
-  currentData.deploymentStatus = deploymentTriggered;
   
   // Read accelerometer data
   sensors_event_t accel_lr, gyro_data, temp;
@@ -343,4 +373,13 @@ void updateFlightData() {
   // Store in circular buffer
   dataBuffer[bufferIndex] = currentData;
   bufferIndex = (bufferIndex + 1) % 300;
+}
+
+void transmitTelemetry() {
+  // Compact telemetry string for radio transmission
+  Serial.print("TLM:");
+  Serial.print(currentData.timeStamp); Serial.print(",");
+  Serial.print(currentData.stage); Serial.print(",");
+  Serial.print(currentData.altitude, 1); Serial.print(",");
+  Serial.print(currentData.accel_HR.y, 2); Serial.print(",");
 }

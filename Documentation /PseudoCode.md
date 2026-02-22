@@ -1,220 +1,117 @@
+Title: 
+Flight Computer Stage Diagram
 
 
+Context:
 
-/* 
+**What will this chart achieve?**
+	The intention of this chart is to expose the hardware & software req’s of our 
+    system.  
 
-1. " $$ " means please check back on this. INSTRUCTION: hit cntrl + f and enter "$$"
-2. method details in README.txt
----------------------------------------------
 
+FORMAT:  
+
+1. Stage N, Title 
+
+2. Functions: f
+*What is happening during this stage* 
+
+3. Transition Behavior: 	
+*Noteworthy Event → Destination Stage*
+
+    ASCENT/BOOST: 
+    APOGEE: The highest point of the flight has been reached.
+    DESCENT_DROGUE: Apogee deployment charge has fired. The rocket is descending under a small drogue parachute.
+    : Main parachute deployment altitude reached and charge has fired (for L2/L3).
+    : The rocket is on the ground. The system can now enter a recovery mode (e.g., beeping). 
+
+--------------
+Stage 1 “Pad Idle”: The initial state after power-on. Awaiting user input
+
+Functions: 
+1. Read accelerometer data 
+2. Determine if any movement has happened 
+
+Transition Behavior
+- If physical switch toggled -> Stage 2.  Switch will be in between Ematch cables
+--------------
+
+Stage 2 “Might_Be_Launching” 
+
+Functions 
+1. Preform On-Flight computation (sensorfusion based velocity)
+2. Begin writing to sd file from BoF (beginning of file) 
+3. Measure acceleration & barometric pressure 
+
+Maybe - use microphone instead… Decibel level could indicate launch
+
+Transition Behavior
+- 2.5G’s >  → Stage 3
+- 5 seconds pass -> stage 2
+--------------
  
- Summary:        Code is written to run on an ESP 32 based microcontroller to preform the functions of a traditional flight computer for a level 3 rocket
+Stage 3 “ASCENT/BOOST”: Launch has been detected. The motor is burning.
 
-STAGENUMBER is incremented within every stage
+Functions:
+1. Cut off parachute ejection logic. 
+2. Transmit telemetry data through UART.
+3. Write telemetry data to sdCard.  
 
-*/ 
 
+Transition Behavior:
+- 4.5 seconds pass -> Stage 4 
+—---------------
+ 
+Stage 4 “Coast”: Motor has burned out, apogee is imminent
 
+Functions:
+1. Preform On-Flight computation (sensorfusion based velocity)
+3. Transmit telemetry data through UART
+4. Write telemetry data to sdCard.  
+5. Deploy parachute off of pre-defined params. 
 
-// $$ Identify & remove any unused librares. 
+Transition Behavior:
+- Parachute Deployed → Stage 5
+- Anything Else, Remain. 
+—---------------
 
-#include "Arduino.h"
-#include <string>
-#include <MAVLink.h>
-#include <Wire.h>
-#include "Adafruit_ICM20948.h"
-#include "Adafruit_ICM20X.h"
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BMP3XX.h"
-#include "Adafruit_ADXL375.h"
-#include "Adafruit_INA260.h"
+Stage 5 “DESCENT_MAIN” : Apogee has been reached. About to deploy Main parachute 
 
+Functions:
+1. Preform On-Flight computation (sensorfusion based velocity)
+2. Transmit telemetry data through UART
+3. Write telemetry data to sdCard.  
+4. Deploy parachute off of pre-defined params. (optional)
 
-//  CONSTS  TO MANUALLY SET ///
+Transition Behavior:
+- Went Idle → Stage 6.
 
-int STAGENUMBER = 0; 
+------------------------
+Stage 6: LANDED/RECOVERY. 
 
-const int MAIN_DEPLOY_ALT = 1400; 
-const float BMP_INIT_READ = 1013.25;
+------------------------
+Success Metrics: 
 
-const int DROUGEPIN = 12; //  
-const int MAINPIN = 11;   // 
+1. Apogee Deployment Accuracy: Did the drogue parachute deploy within ± 10 
+meters of the true apogee recorded by the backup flight computer? ​
 
+2. Launch Detection Latency: What was the time difference between motor ignition 
+(from stopwatch) and the software's transition to Stage 3?​
 
-unsigned long startTime = 0; // Initalized at Stage 1
+3. Data Integrity: Was the entire flight successfully logged to the SD card with no 
+missing data points or file corruption?​
 
+4. Sample Rate Consistency: Did the measured sample rate in-flight remain close 
+to the target 1k –1.5k Hz in Stage 3/4 ?​
 
-float altitude, a_magnitude, velocity = 0;  // Acceleration magnitude and velocity      
-float prevTime = 0, prevAlt = 0.0, deltAlt = 0.0, power;
+5. State Transition Reliability: Does the logged data confirm that all state 
+transitions occurred correctly and for the right reasons?​
 
+6. Backup Timer Functionality: (For dedicated test) Did the backup timer 
+correctly deploy the charge if apogee detection is disabled?​
+​
 
-Adafruit_BMP3XX bmp;                    // barometric pressure sensor
-Adafruit_ADXL375 accel(0x53, &Wire);    // Accelerometer
-
-
-void setup() {
-
-Wire.begin();
-
-	Serial.begin(9600);
-
-
-  Serial.println("ICM20948 Test");
-  if (!icm.begin_I2C(0x69,&Wire1)) {
-
-    Serial.println("Failed to find ICM20948 chip");
-    delay(10);
-  }else{
-    Serial.println("ICM20948 Found!");
-  }
-
-
- Serial.println("ADXL375 Accelerometer Test"); 
-  /* Initialize the sensor */
-  accel = Adafruit_ADXL375(0x53,&Wire);
-  if(!accel.begin(0x53))
-  {
-    /* There was a problem detecting the ADXL375 ... check your connections */
-    Serial.println("Ooops, no ADXL375 detected ... Check your wiring!");
-  }else{
-    Serial.println("ADXL375 Found!");
-  }
-
-
-  Serial.println("Adafruit BMP390 test");
-  //Test to see if communicating properly
-  if (!bmp.begin_I2C(0x77,&Wire)) { 
-  	Serial.println("Could not find a valid BMP3 sensor, check wiring!");
-	  } else{ 
-    Serial.println("BMP Found !");
-	  }
-
- //  ina260.begin(); 
-}
-
-
-
-void loop() {
-// Add a StringBuilder { Time, altitude, acc(x), acc(y), acc(z), Stage#, Battery Life }
-
-  unsigned long elapsedTime = millis();
-
-
-  sensors_event_t event;
-  accel.getEvent(&event);  // return acceleration magnitude (in m/s²)
-
-  float ax = event.acceleration.x;  
-  float ay = event.acceleration.y;   
-  float az = event.acceleration.z;   
-
-  //Calculating altitude using Pressure and Temperature
- altitude = bmp.readAltitude(BMP_INIT_READ);
-  
-
-
-  switch (STAGENUMBER) {
-    case 1:
-    stageOne(az,ay,ax);   // Checking For accelration, ( needs 3 components bc the sensor can have multiple orientations)
-      break;
-    case 2:
-    stageTwo();           // Wating 5.5s
-      break;
-    case 3:
-    stageThree();        // Checking for Apogee 
-      break;
-    case 4: 
-    stageFour();         // Checking for 1400ft
-    default:
-      break;
-  }
-
-
-
-
-
-
-}
-
-
-//----------- Function Definitons ----------------------------
-
-
-bool apogeeReached(float altitude) {
-    const unsigned long interval = 500; // 1/2 second
-    unsigned long prevTime = 0;
-    float prevAlt = 0;
-    float deltAlt = 0;
-
-    unsigned long currentTime = millis();
-    float deltaT = currentTime - prevTime;
-
-    // Accumulate delta altitude
-    deltAlt += altitude - prevAlt;
-    prevAlt = altitude;
-
-    if (deltaT >= interval) {
-      prevTime = currentTime;
-
-      if (deltAlt < 0) {
-        // Altitude decreased over 1/2 second -> apogee passed
-        deltAlt = 0;
-        return true;
-      }
-
-      // Reset delta for next interval
-      deltAlt = 0;
-    }
-
-  return false;
-}
-
-
-void stageOne(float az, float ay, float ax){ 
-if (az > 1 || ay >1 || ax>1){ 
-  startTime = millis();
-  STAGENUMBER++;  
-} else
-{}
-  return; 
-}
-
-
-void stageTwo(){ 
-if ((millis()-startTime) > 5500){ 
-  STAGENUMBER++;  
-} 
-
-}
-
-void stageThree(){
-  // STAGE 3 LOOPING CONDITION 
-if (apogeeReached()){ 
-  deployCharges(DROUGEPIN); 
-  STAGENUMBER++;  
-} 
-
-}
-
-void stageFour(){ 
-
-  if(altitude<MAIN_DEPLOY_ALT){ 
-  deployCharges(MAINPIN);
-  STAGENUMBER++;  
-  }
-
-}
-
-
-
-
-void deployCharges(int pin) {
-
-  /* 
-  Set the predefined pin to HIGH
-  */ 
- digitalWrite(pin, HIGH); 
-
-}
+** Please add more**
 
 
 
